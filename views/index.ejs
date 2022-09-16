@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+    <!-- socekt.io -->
+    <script src="https://cdn.socket.io/4.5.0/socket.io.min.js"
+        integrity="sha384-7EyYLQZgWBi67fBtVxw60/OWl1kjsfrPFcaU0pp0nAh+i8FD068QogUvg85Ewy1k"
+        crossorigin="anonymous"></script>
+
+    <!-- jquery -->
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"
+        integrity="sha256-/xUj+3OJU5yExlq6GSYGSHk7tPXikynS7ogEvDej/m4=" crossorigin="anonymous">
+        </script>
+</head>
+<style>
+    #messenger {
+        width: 40vh;
+        height: 50vh;
+        background-color: lightblue;
+        overflow: scroll;
+    }
+
+    #notice {
+        position: relative;
+        display: inline-block;
+        left: 50%;
+        transform: translateX(-50%);
+        padding-top: 5px;
+    }
+
+    #msg {
+        margin: 4px 10px 4px 10px;
+        padding: 6px 10px 6px 10px;
+        display: inline-block;
+        background-color: lightyellow;
+        border-radius: 12px;
+    }
+
+    #user_profile {
+        margin: 4px 10px 4px 10px;
+        padding: 6px 10px 6px 10px;
+        display: inline-block;
+        background-color: lightpink;
+        border-radius: 12px;
+    }
+
+    #msg_dm {
+        margin: 4px 10px 4px 10px;
+        padding: 6px 10px 6px 10px;
+        display: inline-block;
+        background-color: lightslategray;
+        border-radius: 12px;
+    }
+
+    #my_msg_container {
+        text-align: right;
+    }
+
+    #your_msg_container {
+        text-align: left;
+        margin-left: 15px;
+    }
+
+    #input_box {
+        text-align: right;
+        padding-right: 13px;
+        margin: 5px 0px 5px 0px;
+        background-color: lightgray;
+        border-radius: 12px;
+        width: 34vh;
+        height: 20px;
+    }
+</style>
+
+<body>
+    <input id="input_box" type="text" style="width: 80px; margin-left: 24.5vh" placeholder="name" onkeydown = "if (event.keyCode == 13){document.getElementById('enter_user').click()}">
+    <button id="enter_user" type="button" onclick="enter($(this).prev('input').val());" onsubmit="return false">✔️</button>
+    <br>
+    <div id="messenger"></div>
+    <input id="input_box" type="text" id="input_box" placeholder="text" onkeydown = "if (event.keyCode == 13) {document.getElementById('input_msg').click()}">
+    <button id="input_msg" onclick="send_msg($(this).prev('input').val());">⬆︎ </button>
+
+    <select name="users" id='users' onchange="direct_message(this.value);">
+        <option value="-1">전체</option>
+    </select>
+    <script>
+        var messenger = $("#messenger");
+        var options = $("#users");
+        var socket = io.connect();
+        var users = {};
+        var nickname;
+        var user_index;
+        var check_in = 0;
+        var recv_index = -1;
+        var last_name;
+        var check_enter = 0;
+
+        // 이름 설정해서 보내기
+        function enter(new_nickname) {
+            if (nickname != new_nickname) {
+                nickname = new_nickname;
+                socket.emit("enter", {
+                    name: new_nickname,
+                    user_index: user_index
+                })
+            } else {
+                alert("같은 이름으로 닉변 불가!!");
+            }
+            if (check_enter == 0) {
+
+                // 입장 했을 때 공지
+                socket.on('notice', (data) => {
+                    check_enter = 1;
+                    if (data.result == 1) {
+                        // 새로 가입
+                        var notice = $(`<div id="notice">${data.user} 님이 입장하셨읍니다.</div><br>`);
+                        if (check_in == 0) {
+                            for (index in data.users) {
+                                users[index] = data.users[index][1];
+                            }
+                            for (index in users) {
+                                if (index != user_index) {
+                                    var add_opt = $(`<option value = ${index}>${users[index]}</option>`)
+                                    options.append(add_opt);
+                                }
+                            }
+                            check_in = 1;
+                        } else {
+                            if (data.user_index != user_index) {
+                                var add_opt = $(`<option value = ${data.user_index}>${data.user}</option>`)
+                                options.append(add_opt);
+                                users[data.user_index] = data.user
+                            }
+                        }
+                    } else if (data.result == 2) {
+                        // 닉변
+                        var notice = $(`<div id="notice">${data.old_name} ==> ${data.new_name}</div><br>`);
+                        
+                        // 변수 수정 + selectbox 이름 변경
+                        users[data.user_index] = data.new_name;
+                        if (user_index != data.user_index) {
+                            var mod_option = $(`option[value=${data.user_index}]`).text(`${data.new_name}`)
+                        }
+                    } else {
+                        // 퇴장
+                        var notice = $(`<div id="notice">${data.user[1]} 님이 퇴장하셨읍니다.</div><br>`);
+                        $(`option[value=${data.user[0]}]`).remove()
+                        delete users[data.user[0]]
+                        check_enter = 1;
+                    }
+                    messenger.append(notice);
+                    $('#messenger').scrollTop($('#messenger')[0].scrollHeight);
+                })
+
+                // 메세지 받기
+                socket.on('recv_msg', (data) => {
+                    if (data.send_user_index != user_index) {
+                        if (last_name != users[data.send_user_index]) {
+                            var your_user = $(`<div id='user_container'><div id="user_profile">${users[data.send_user_index]}</div></div>`);
+                            messenger.append(your_user);
+                            last_name = users[data.send_user_index];
+                        }
+                        var your_msg = $(`<div id='your_msg_container'><div id="msg">${data.msg}</div></div>`);
+                        messenger.append(your_msg);
+                        $('#messenger').scrollTop($('#messenger')[0].scrollHeight);
+                    }
+                })
+
+                // DM
+                socket.on('direct_message', (data) => {
+                    if (data.send_user_index != user_index) {
+                        if (last_name != users[data.send_user_index]) {
+                            var your_user = $(`<div id='user_container'><div id="user_profile">${users[data.send_user_index]}</div></div>`);
+                            messenger.append(your_user);
+                            last_name = users[data.send_user_index];
+                        }
+                        var your_msg = $(`<div id='your_msg_container'><div id="msg_dm">DM: ${data.msg}</div></div>`);
+                        messenger.append(your_msg);
+                        $('#messenger').scrollTop($('#messenger')[0].scrollHeight);
+                    }
+                })
+
+                // user_index 설정
+                socket.on("set_user_index", (data) => {
+                    user_index = data.user_index;
+                })
+            }
+        }
+        // 메세지 보내기
+        function send_msg(msg) {
+            socket.emit('msg', {
+                send_user_index: user_index,
+                recv_user_index: recv_index,
+                msg: msg
+            })
+            var my_msg = $(`<div id='my_msg_container'><div id="msg">${msg}</div></div>`);
+            messenger.append(my_msg);
+            $('#messenger').scrollTop($('#messenger')[0].scrollHeight);
+        }
+
+        function direct_message(recv_id) {
+            recv_index = recv_id;
+        }
+    </script>
+</body>
+
+</html>
