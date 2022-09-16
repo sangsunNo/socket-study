@@ -10,7 +10,7 @@ app.use(express.urlencoded({extended: false}));
 app.use(express.json());
 
 app.get("/", (req, res) => {
-    res.render("test_index");
+    res.render("index");
 })
 
 // key - index
